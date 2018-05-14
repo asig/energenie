@@ -67,7 +67,7 @@ commands:
   off <socket-spec>:      Turn sockets off that match <socket-spec>.
 
   <socket-spec> can be a comma-separated list of socket numbers (1 - 4),
-  ranges, or 'all' as a short cut for 1-4.append
+  ranges, or 'all' as a short cut for 1-4.
 
   Example: 1,2-3 specifies sockets 1, 2, and 3.
 `)

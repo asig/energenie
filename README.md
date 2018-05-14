@@ -13,16 +13,22 @@ program fixes this.
 # Usage
 Usage: `energenie [flags] command [args]`
 
-Flags:
-- `--address`: The EnerGenie's network address. Default is 192.168.3.200
-- `--password`: The password used to log in. Default is "1"
+## Flags
 
-Supported commands:
-- `status` [<socket-spec>]: Print the sockets' status.
-- `on` <socket-spec>: Turn sockets on that match <socket-spec>.
-- `off` <socket-spec>: Turn sockets off that match <socket-spec>.
+| Flag         | Meaning                                                   |
+|--------------|-----------------------------------------------------------|
+| `--address`  | The EnerGenie's network address. Default is 192.168.3.200 |
+| `--password` | The password used to log in. Default is "1"               |
 
-<socket-spec> can be a comma-separated list of socket numbers (1 - 4),
-ranges, or 'all' as a short cut for 1-4.append
+## Supported commands
+
+| Command                  | Meaning                                      |
+|--------------------------|----------------------------------------------|
+| `status [<socket-spec>]` | Print the sockets' status.                   |
+| `on <socket-spec>`       | Turn sockets on that match `<socket-spec>`.  |
+| `off <socket-spec>`      | Turn sockets off that match `<socket-spec>`. |
+
+`<socket-spec>` is a comma-separated list of socket numbers, ranges, or 'all'
+as a short cut for '1-4'.
 
 Example: "1,2-3" specifies sockets 1, 2, and 3.
