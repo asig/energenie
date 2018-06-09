@@ -41,8 +41,11 @@ var (
 )
 
 const (
-	minSocket = 1
-	maxSocket = 4
+	minSocket  = 1
+	maxSocket  = 4
+	nofSockets = (maxSocket - minSocket) + 1
+
+	maxSocketNameLen = 11
 )
 
 type socketList []int
@@ -159,24 +162,73 @@ func login() string {
 	return res
 }
 
+func indexAfter(haystack, needle string, pos int) int {
+	s := haystack[pos:]
+	i := strings.Index(s, needle)
+	if i > -1 {
+		i += pos
+	}
+	return i
+}
+
+func extractName(html string, firstPos int) (res *string, pos int) {
+	beginMarker := "<h2 class=\"ener\">"
+	endMarker := "</h2>"
+	begin := indexAfter(html, beginMarker, firstPos)
+	if begin == -1 {
+		return nil, -1
+	}
+	begin += len(beginMarker)
+	end := indexAfter(html, endMarker, begin)
+	name := html[begin:end]
+	return &name, begin
+}
+
+func extractNames(html string) []string {
+	var names []string
+	pos := 0
+	maxNameLen := 0
+	var n *string
+	for i := minSocket; i <= maxSocket; i++ {
+		n, pos = extractName(html, pos)
+		if n == nil {
+			break
+		}
+		name := strings.TrimSpace(*n)
+		names = append(names, name)
+		if len(name) > maxNameLen {
+			maxNameLen = len(name)
+		}
+	}
+
+	for idx, _ := range names {
+		for len(names[idx]) < maxNameLen {
+			names[idx] = names[idx] + " "
+		}
+	}
+
+	return names
+}
+
 func showStatus(socketSpec string) {
 	sockets := parseSocketSpec(socketSpec)
 
 	body := login()
 	defer logout()
 
+	names := extractNames(body)
 	i1 := strings.Index(body, "sockstates = ")
 	body = body[i1:]
 	i1 = strings.Index(body, "[")
 	i2 := strings.Index(body, "]")
 	states := strings.Split(body[i1+1:i2], ",")
 
-	for _, socket := range sockets {
+	for idx, socket := range sockets {
 		status := "off"
 		if states[socket-1] == "1" {
 			status = "on"
 		}
-		fmt.Printf("Socket %d: %s\n", socket, status)
+		fmt.Printf("Socket %d (%s): %s\n", socket, names[idx], status)
 	}
 }
 
