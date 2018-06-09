@@ -41,11 +41,8 @@ var (
 )
 
 const (
-	minSocket  = 1
-	maxSocket  = 4
-	nofSockets = (maxSocket - minSocket) + 1
-
-	maxSocketNameLen = 11
+	minSocket = 1
+	maxSocket = 4
 )
 
 type socketList []int
