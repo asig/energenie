@@ -25,6 +25,7 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"net/http/cookiejar"
 	"os"
@@ -229,27 +230,31 @@ func showStatus(socketSpec string) {
 	}
 }
 
-func switchSocket(on bool, socketSpec string) {
-	sockets := parseSocketSpec(socketSpec)
-
+func switchSocket(on bool, s int) {
 	val := "0"
 	if on {
 		val = "1"
 	}
+	form := make(map[string][]string)
+	form[fmt.Sprintf("cte%d", s)] = []string{val}
+	resp, err := client.PostForm(fmt.Sprintf("http://%s/", *flagAddress), form)
+	if err != nil {
+		log.Fatalf("Can't switch socket %d: %s", s, err)
+	}
+	defer resp.Body.Close()
+	_, err = ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatalf("Can't read response from switching socket %d: %s", s, err)
+	}
+}
 
+func switchSockets(on bool, socketSpec string) {
+	sockets := parseSocketSpec(socketSpec)
 	login()
 	defer logout()
 
 	for _, socket := range sockets {
-		form := make(map[string][]string)
-		form["cte1"] = []string{""}
-		form["cte2"] = []string{""}
-		form["cte3"] = []string{""}
-		form["cte4"] = []string{""}
-		form[fmt.Sprintf("cte%d", socket)] = []string{val}
-
-		resp, _ := client.PostForm(fmt.Sprintf("http://%s/", *flagAddress), form)
-		resp.Body.Close()
+		switchSocket(on, socket)
 	}
 }
 
@@ -274,7 +279,7 @@ func main() {
 		if len(args) != 2 {
 			usage()
 		}
-		switchSocket(args[0] == "on", args[1])
+		switchSockets(args[0] == "on", args[1])
 	default:
 		fmt.Fprintf(os.Stderr, "%s is not a valid command.\n", args[0])
 		usage()
