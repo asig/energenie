@@ -1,15 +1,14 @@
 /*
- * energenie: A command line utilitly to control Energenie's programmable
- * power strips.
+ * Copyright (c) 2018, 2020 Andreas Signer <asigner@gmail.com>
  *
- * Copyright (c) 2018 Andreas Signer <asigner@gmail.com>
+ * This file is part of energenie.
  *
- * This program is free software: you can redistribute it and/or modify
+ * energenie is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
  *
- * This program is distributed in the hope that it will be useful,
+ * energenie is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
@@ -23,35 +22,38 @@ package main
 import (
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"log"
-	"net/http"
-	"net/http/cookiejar"
 	"os"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/asig/energenie/pkg/energenie"
 )
 
 var (
-	client *http.Client
+	client energenie.Client
 
 	flagAddress  = flag.String("address", "192.168.3.200", "EnerGenie's address")
+	flagPort = flag.Int("port", 5000, "Port used for native protocol")
 	flagPassword = flag.String("password", "1", "password to log in to EnerGenie")
+	flagProtocol = flag.String("protocol", "native", "protocol to use. Possible values are 'native' and 'http'")
 )
-
-const (
-	minSocket = 1
-	maxSocket = 4
-)
-
-type socketList []int
 
 func init() {
+	var err error
 	flag.Parse()
-
-	jar, _ := cookiejar.New(nil)
-	client = &http.Client{Jar: jar}
+	switch strings.ToLower(*flagProtocol) {
+	case "native":
+		client, err = energenie.NewNativeClient(*flagAddress, *flagPort, *flagPassword)
+	case "http":
+		client, err = energenie.NewHttpClient(*flagAddress, *flagPassword)
+	default: log.Fatalf("Unsupported protocol %q. Valid values are \"native\" and \"http\"", *flagProtocol);
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Can't instantiate a client: %s", err)
+		os.Exit(1)
+	}
 }
 
 func usage() {
@@ -59,7 +61,9 @@ func usage() {
 
 flags:
   --address:  The EnerGenie's network address
+  --port:     The port used in the native protocol
   --password: The password used to log in
+  --protocol: What protocol to use: "http" or "native"
   
 commands:
   status [<socket-spec>]: Print the sockets' status.
@@ -83,25 +87,25 @@ func atoiOrDie(raw string) int {
 	return i
 }
 
-func addAll(set map[int]bool) map[int]bool {
-	for i := minSocket; i <= maxSocket; i++ {
+func addAll(set map[energenie.Socket]bool) map[energenie.Socket]bool {
+	for i := energenie.Socket_Min; i <= energenie.Socket_Max; i++ {
 		set[i] = true
 	}
 	return set
 }
 
-func checkSocket(socket int) {
-	if socket < minSocket || socket > maxSocket {
-		fmt.Fprintf(os.Stderr, "Invalid socket number %d, must be between %d and %d.\n", socket, minSocket, maxSocket)
+func checkSocket(socket energenie.Socket) {
+	if socket < energenie.Socket_Min || socket > energenie.Socket_Max {
+		fmt.Fprintf(os.Stderr, "Invalid socket number %d, must be between %d and %d.\n", socket, energenie.Socket_Min, energenie.Socket_Max)
 		os.Exit(1)
 	}
 }
 
-func addRange(r string, set map[int]bool) map[int]bool {
+func addRange(r string, set map[energenie.Socket]bool) map[energenie.Socket]bool {
 	parts := strings.Split(r, "-")
-	low := atoiOrDie(parts[0])
+	low := energenie.Socket(atoiOrDie(parts[0]))
 	checkSocket(low)
-	hi := atoiOrDie(parts[1])
+	hi := energenie.Socket(atoiOrDie(parts[1]))
 	checkSocket(hi)
 	if low > hi {
 		low, hi = hi, low
@@ -112,15 +116,21 @@ func addRange(r string, set map[int]bool) map[int]bool {
 	return set
 }
 
-func addSingle(str string, set map[int]bool) map[int]bool {
-	s := atoiOrDie(strings.TrimSpace(str))
+func addSingle(str string, set map[energenie.Socket]bool) map[energenie.Socket]bool {
+	s := energenie.Socket(atoiOrDie(strings.TrimSpace(str)))
 	checkSocket(s)
 	set[s] = true
 	return set
 }
 
-func parseSocketSpec(specString string) socketList {
-	seen := make(map[int]bool)
+
+type socketSlice []energenie.Socket
+func (p socketSlice) Len() int           { return len(p) }
+func (p socketSlice) Less(i, j int) bool { return p[i] < p[j] }
+func (p socketSlice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
+
+func parseSocketSpec(specString string) []energenie.Socket {
+	seen := make(map[energenie.Socket]bool)
 	parts := strings.Split(specString, ",")
 	for _, part := range parts {
 		part = strings.TrimSpace(part)
@@ -133,127 +143,46 @@ func parseSocketSpec(specString string) socketList {
 		}
 	}
 
-	var res socketList
+	var res []energenie.Socket
 	for key := range seen {
 		res = append(res, key)
 	}
-	sort.Ints(res)
+	sort.Sort(socketSlice(res))
 	return res
-}
-
-func logout() string {
-	resp, _ := client.Get(fmt.Sprintf("http://%s/login.html", *flagAddress))
-	body, _ := ioutil.ReadAll(resp.Body)
-	res := string(body)
-	resp.Body.Close()
-	return res
-}
-
-func login() string {
-	resp, _ := client.PostForm(fmt.Sprintf("http://%s/login.html", *flagAddress), map[string][]string{
-		"pw": []string{*flagPassword},
-	})
-	body, _ := ioutil.ReadAll(resp.Body)
-	res := string(body)
-	resp.Body.Close()
-	return res
-}
-
-func indexAfter(haystack, needle string, pos int) int {
-	s := haystack[pos:]
-	i := strings.Index(s, needle)
-	if i > -1 {
-		i += pos
-	}
-	return i
-}
-
-func extractName(html string, firstPos int) (res *string, pos int) {
-	beginMarker := "<h2 class=\"ener\">"
-	endMarker := "</h2>"
-	begin := indexAfter(html, beginMarker, firstPos)
-	if begin == -1 {
-		return nil, -1
-	}
-	begin += len(beginMarker)
-	end := indexAfter(html, endMarker, begin)
-	name := html[begin:end]
-	return &name, begin
-}
-
-func extractNames(html string) []string {
-	var names []string
-	pos := 0
-	maxNameLen := 0
-	var n *string
-	for i := minSocket; i <= maxSocket; i++ {
-		n, pos = extractName(html, pos)
-		if n == nil {
-			break
-		}
-		name := strings.TrimSpace(*n)
-		names = append(names, name)
-		if len(name) > maxNameLen {
-			maxNameLen = len(name)
-		}
-	}
-
-	for idx, _ := range names {
-		for len(names[idx]) < maxNameLen {
-			names[idx] = names[idx] + " "
-		}
-	}
-
-	return names
 }
 
 func showStatus(socketSpec string) {
 	sockets := parseSocketSpec(socketSpec)
 
-	body := login()
-	defer logout()
-
-	names := extractNames(body)
-	i1 := strings.Index(body, "sockstates = ")
-	body = body[i1:]
-	i1 = strings.Index(body, "[")
-	i2 := strings.Index(body, "]")
-	states := strings.Split(body[i1+1:i2], ",")
-
-	for idx, socket := range sockets {
+	state, names, err := client.Status()
+	hasNames := names != nil
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Can't get status: %s", err)
+		os.Exit(1)
+	}
+	for _, socket := range sockets {
 		status := "off"
-		if states[socket-1] == "1" {
+		if state[socket] {
 			status = "on"
 		}
-		fmt.Printf("Socket %d (%s): %s\n", socket, names[idx], status)
-	}
-}
-
-func switchSocket(on bool, s int) {
-	val := "0"
-	if on {
-		val = "1"
-	}
-	form := make(map[string][]string)
-	form[fmt.Sprintf("cte%d", s)] = []string{val}
-	resp, err := client.PostForm(fmt.Sprintf("http://%s/", *flagAddress), form)
-	if err != nil {
-		log.Fatalf("Can't switch socket %d: %s", s, err)
-	}
-	defer resp.Body.Close()
-	_, err = ioutil.ReadAll(resp.Body)
-	if err != nil {
-		log.Fatalf("Can't read response from switching socket %d: %s", s, err)
+		socketName := fmt.Sprintf("%d", socket)
+		if hasNames {
+			socketName = socketName + " (" + names[socket] + ")"
+		}
+		fmt.Printf("Socket %s: %s\n", socketName, status)
 	}
 }
 
 func switchSockets(on bool, socketSpec string) {
 	sockets := parseSocketSpec(socketSpec)
-	login()
-	defer logout()
-
-	for _, socket := range sockets {
-		switchSocket(on, socket)
+	states := make(map[energenie.Socket]bool)
+	for _, s := range sockets {
+		states[s] = on
+	}
+	err := client.Switch(states)
+	if err != nil {
+			fmt.Fprintf(os.Stderr, "Can't switch sockets: %s", err)
+			os.Exit(1)
 	}
 }
 

@@ -3,8 +3,12 @@
 This is a command line utility to control Energenie's programmable power 
 strips EG-PM2-LAN, EG-PMS2-LAN, and EG-PMS2-WLAN.
 
+It supports both EnerGenie's native protocol, as well as its HTTP protocol.
+
 The power strips are totally awesome, but the management software is crap.
-More importantly, there is no command line tool that runs under Linux. This
+~~More importantly, there is no command line tool that runs under Linux.~~ 
+There is a command line tool that also runs under Linux (`egctl`), but it
+makes you write a config file first, which is ... um ... suboptimal. This
 program fixes this.
 
 # How to build
@@ -15,10 +19,13 @@ Usage: `energenie [flags] command [args]`
 
 ## Flags
 
-| Flag         | Meaning                                                   |
-|--------------|-----------------------------------------------------------|
-| `--address`  | The EnerGenie's network address. Default is 192.168.3.200 |
-| `--password` | The password used to log in. Default is "1"               |
+| Flag         | Meaning                                                              |
+|--------------|----------------------------------------------------------------------|
+| `--address`  | The EnerGenie's network address. Default is 192.168.3.200            |
+| `--port`     | The port to talk to if using the native protocol. Default is 5000    |
+| `--password` | The password used to log in. Default is "1"                          |
+| `--protocol` | The protocol to use, either 'native' or 'http'. Default is 'native'  |
+
 
 ## Supported commands
 
